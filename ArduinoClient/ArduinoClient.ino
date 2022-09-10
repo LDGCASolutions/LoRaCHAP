@@ -26,6 +26,9 @@ RH_RF95 rf95;
 float frequency = 915.0;
 bool authenticated = false;
 
+char deviceID[10] = "NODE001";
+char devicePW[30] = "VerySecurePassword001";
+
 char hashdigest(Hash *hash, char *plaintext) {
   // ThisIsARandomString
   // E3ED18D0AE5E96C7BA04C855ABE7C08C34D0FCAC1CE61978836ACF068E1C8E19
@@ -57,11 +60,6 @@ int chap() {
   Serial.println("=========================================================================");
   Serial.println("Authenticating...");
   uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-  char sender[10];
-  char reqType[10];
-  char content[40];
-  char deviceID[10] = "NODE001";
-  char devicePW[30] = "VerySecurePassword001";
   uint8_t digest[32];
 
   // Request to authenticate by sending the deviceID
@@ -74,8 +72,17 @@ int chap() {
     if (rf95.recv(buf, sizeof(buf))) {
       Serial.print("Message: ");
       Serial.println((char*)buf);
-      
+
+      char sender[10];
+      char reqType[10];
+      char content[40];
       sscanf(buf, "%s %s %s", &sender, &reqType, &content);
+      Serial.print("\tSender  : ");
+      Serial.println(sender);
+      Serial.print("\tRequest : ");
+      Serial.println(reqType);
+      Serial.print("\tContent : ");
+      Serial.println(content);
 
       if (strcmp(reqType, "CHAP_CHAL") == 0) {
         Serial.print(sender);
@@ -91,15 +98,6 @@ int chap() {
 
         // ThisIsARandomStringVerySecurePassword001
         // 997AD7A742BEAE99A2A67E0EF6835F49728CD2147F2688C7CB0AA7F639E28D7B <- Hopefully digest is this
-        
-        Serial.print("Challenge response (After hashing): ");
-
-        for(int i; i<sizeof(digest); i++) {
-          uint8_t letter[1];
-          sprintf(letter,"%x",digest[i]);  
-          Serial.print((char*)letter);
-        }
-        Serial.println();
 
         sprintf(buf, "%s %s %s", deviceID, "CHAP_RESP", digest);
         Serial.println("Sending challenge response");
