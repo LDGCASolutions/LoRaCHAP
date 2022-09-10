@@ -1,21 +1,13 @@
 /*
-  LoRa Simple Client for Arduino :
-  Support Devices: LoRa Shield + Arduino 
-  
-  Example sketch showing how to create a simple messageing client, 
-  with the RH_RF95 class. RH_RF95 class does not provide for addressing or
-  reliability, so you should only use RH_RF95 if you do not need the higher
-  level messaging abilities.
-
-  It is designed to work with the other example LoRa Simple Server
-  User need to use the modified RadioHead library from:
-  https://github.com/dragino/RadioHead
-
-  modified 16 11 2016
-  by Edwin Chen <support@dragino.com>
-  Dragino Technology Co., Limited
+ * 2022-09-10
+  This node assumes it is authenticated and starts broadcasting data
+  Data packets are organised as follows
+    NODE_ID MESSAGE_TYPE CONTENT 
+    
+  Server will check the nodeID against stored data to check if it was authenticated recently
+  If so, Server will accept the packet
+  Else, Server will send a CHAP_FAIL message, triggering the CHAP process on this node
 */
-
 #include <SPI.h>
 #include <RH_RF95.h>
 #include <SHA256.h>
@@ -24,15 +16,17 @@ SHA256 sha256;
 // Singleton instance of the radio driver
 RH_RF95 rf95;
 float frequency = 915.0;
-bool authenticated = false;
+bool authenticated = true;
 
 char deviceID[10] = "NODE001";
 char devicePW[30] = "VerySecurePassword001";
 
-char hashdigest(Hash *hash, char *plaintext) {
-  // ThisIsARandomString
-  // E3ED18D0AE5E96C7BA04C855ABE7C08C34D0FCAC1CE61978836ACF068E1C8E19
+uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+char sender[10];
+char reqType[10];
+char content[40];
 
+char hashdigest(Hash *hash, char *plaintext) {
   // ThisIsARandomStringVerySecurePassword001
   // 997AD7A742BEAE99A2A67E0EF6835F49728CD2147F2688C7CB0AA7F639E28D7B
   
@@ -42,13 +36,13 @@ char hashdigest(Hash *hash, char *plaintext) {
   hash->update(plaintext, strlen(plaintext));
   hash->finalize(value, sizeof(value));
 
-//  Serial.print("Inside hashdigest(): ");
-//  for(int i; i<sizeof(value); i++) {
-//    uint8_t letter[1];
-//    sprintf(letter,"%x",value[i]);  
-//    Serial.print((char*)letter);
-//  }
-//  Serial.println();
+  Serial.print("Inside hashdigest(): ");
+  for(int i; i<sizeof(value); i++) {
+    uint8_t letter[1];
+    sprintf(letter,"%x",value[i]);  
+    Serial.print((char*)letter);
+  }
+  Serial.println();
 
   return value;
 }
@@ -59,7 +53,7 @@ int chap() {
 
   Serial.println("=========================================================================");
   Serial.println("Authenticating...");
-  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+  
   uint8_t digest[32];
 
   // Request to authenticate by sending the deviceID
@@ -72,10 +66,7 @@ int chap() {
     if (rf95.recv(buf, sizeof(buf))) {
       Serial.print("Message: ");
       Serial.println((char*)buf);
-
-      char sender[10];
-      char reqType[10];
-      char content[40];
+      
       sscanf(buf, "%s %s %s", &sender, &reqType, &content);
       Serial.print("\tSender  : ");
       Serial.println(sender);
@@ -104,13 +95,28 @@ int chap() {
         
         rf95.send(buf, sizeof(buf));
         rf95.waitPacketSent(); 
-         
+
+        if (rf95.waitAvailableTimeout(3000)) {   
+          if (rf95.recv(buf, sizeof(buf))) {
+            sscanf(buf, "%s %s %s", &sender, &reqType, &content);
+            Serial.print("\tSender  : ");
+            Serial.println(sender);
+            Serial.print("\tRequest : ");
+            Serial.println(reqType);
+            Serial.print("\tContent : ");
+            Serial.println(content);
+            
+            if ((strcmp(reqType, "CHAP_AUTH") == 0) && strncmp(deviceID, content, 10) == 0) {
+              Serial.print(sender);
+              Serial.println(" says this node is authenticated! Lets Go!");
+              return true;  
+            }
+          }
+        }         
       } else {
         Serial.println("ELSE");
         Serial.println((char*)buf);
       }
-
-     
 
 //      Serial.print("Challenge response: ");
 //      for(int i; i<sizeof(digest); i++) {
@@ -155,40 +161,38 @@ void setup()
   rf95.setCodingRate4(5);
 }
 
-void loop() {
+void loop() {  
   while (!authenticated) {
     authenticated = chap();
     delay(15000);
   }
-  
-  Serial.println("Sending to LoRa Server");
-  // Send a message to LoRa Server
-  uint8_t data[] = "Hello, this is device 1";
-  rf95.send(data, sizeof(data));
-  
-  rf95.waitPacketSent();
-  // Now wait for a reply
-  uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-  uint8_t len = sizeof(buf);
 
-  if (rf95.waitAvailableTimeout(3000))
-  { 
-    // Should be a reply message for us now   
-    if (rf95.recv(buf, &len))
-   {
-      Serial.print("got reply: ");
-      Serial.println((char*)buf);
-      Serial.print("RSSI: ");
-      Serial.println(rf95.lastRssi(), DEC);    
-    }
-    else
-    {
-      Serial.println("recv failed");
+  Serial.println("Sending data to LoRa Server");
+  // Send a message to LoRa Server
+  sprintf(buf, "%s %s %s", deviceID, "MESSAGE", "Heres some data :-P");
+  rf95.send(buf, sizeof(buf));
+  rf95.waitPacketSent();
+
+  if (rf95.waitAvailableTimeout(3000)) {
+    if (rf95.recv(buf, sizeof(buf))) {
+  //    Serial.print("Message: ");
+  //    Serial.println((char*)buf);
+      
+      sscanf(buf, "%s %s %s", &sender, &reqType, &content);
+      Serial.print("\tSender  : ");
+      Serial.println(sender);
+      Serial.print("\tRequest : ");
+      Serial.println(reqType);
+      Serial.print("\tContent : ");
+      Serial.println(content);
+  
+      if ((strcmp(reqType, "CHAP_FAIL") == 0) && strncmp(deviceID, content, 10) == 0) {
+        Serial.print(sender);
+        Serial.println(" says this node is not authenticated!");
+        authenticated = false;
+      }
     }
   }
-  else
-  {
-    Serial.println("No reply, is LoRa server running?");
-  }
-  delay(5000);
+  
+  delay(10000);
 }

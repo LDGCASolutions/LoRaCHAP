@@ -1,20 +1,9 @@
 /*
-  LoRa Simple Yun Server :
-  Support Devices: LG01. 
+  2022-09-10
+
+  This server can identify a CHAP request and handle the handshake 
+  all the way up to verifying the challenge response.
   
-  Example sketch showing how to create a simple messageing server, 
-  with the RH_RF95 class. RH_RF95 class does not provide for addressing or
-  reliability, so you should only use RH_RF95 if you do not need the higher
-  level messaging abilities.
-
-  It is designed to work with the other example LoRa Simple Client
-
-  User need to use the modified RadioHead library from:
-  https://github.com/dragino/RadioHead
-
-  modified 16 11 2016
-  by Edwin Chen <support@dragino.com>
-  Dragino Technology Co., Limited
 */
 //If you use Dragino IoT Mesh Firmware, uncomment below lines.
 //For product: LG01. 
