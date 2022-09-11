@@ -47,7 +47,7 @@ char hashdigest(Hash *hash, char *plaintext) {
   return value;
 }
 
-int chap() {
+bool chap() {
   //  Device ID: NODE001
   //  Device PW: VerySecurePassword001
 
@@ -133,9 +133,9 @@ int chap() {
   }
   else {
     Serial.println("No challenge");
-    // return 0;
   }
-  return 0;
+  Serial.println("CHAP Failed");
+  return false;
 }
 
 void setup() 
@@ -161,7 +161,9 @@ void setup()
   rf95.setCodingRate4(5);
 }
 
-void loop() {  
+void loop() {
+  Serial.println("-------------------------------------------------------------------------");
+   
   while (!authenticated) {
     authenticated = chap();
     delay(15000);
