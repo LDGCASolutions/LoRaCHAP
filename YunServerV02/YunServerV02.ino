@@ -36,7 +36,6 @@ char genChallenge() {
 
 bool authStat(char *deviceID) {
   // Check the authentication status of the device
-  Serial.println(deviceID);
   for (int i; i<10; i++) {
     if (strncmp(*devices[i], *deviceID, 10) == 0) {
       if (authenticated[i]) {
@@ -47,11 +46,11 @@ bool authStat(char *deviceID) {
   return false;
 }
 
-void authSet(char *sender) {
+void authSet(char *sender, bool state) {
   // Check the authentication status of the device
   for (int i; i<10; i++) {
     if (strncmp(*devices[i], *sender, 10) == 0) {
-      authenticated[i] = true;
+      authenticated[i] = state;
     }  
   }
 }
@@ -132,6 +131,7 @@ void loop() {
           } else {
             Console.print(sender);
             Console.println(" is NOT authenticated");
+            authSet(sender, false);
   
             sprintf(buf, "%s %s %s", deviceID, "CHAP_FAIL", sender);
             rf95.send(buf, sizeof(buf));
@@ -179,7 +179,7 @@ void loop() {
           
           if (strncmp((char*)digest, (char*)nodeDigest, 16) == 0) {
             Console.println("HASHES MATCH !!!");
-            authSet(sender);
+            authSet(sender, true);
 
             sprintf(buf, "%s %s %s", deviceID, "CHAP_AUTH", sender);
             rf95.send(buf, sizeof(buf));
@@ -187,6 +187,7 @@ void loop() {
             Console.println("Notifing the node");
 
           } else {
+            authSet(sender, false);
             Console.println("Authentication failed");
           }
           
