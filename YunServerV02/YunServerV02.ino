@@ -17,7 +17,7 @@ RH_RF95 rf95;
 
 int led = A2;
 float frequency = 915.0;
-
+int i;
 char deviceID[10] = "GATE001";
 //uint8_t nodeDigest[32];
 
@@ -36,7 +36,7 @@ char genChallenge() {
 
 bool authStat(char *deviceID) {
   // Check the authentication status of the device
-  for (int i; i<10; i++) {
+  for (i=0; i<10; i++) {
     if (strncmp(*devices[i], *deviceID, 10) == 0) {
       if (authenticated[i]) {
         return true;
@@ -48,7 +48,7 @@ bool authStat(char *deviceID) {
 
 void authSet(char *sender, bool state) {
   // Check the authentication status of the device
-  for (int i; i<10; i++) {
+  for (i=0; i<10; i++) {
     if (strncmp(*devices[i], *sender, 10) == 0) {
       authenticated[i] = state;
     }  
@@ -63,7 +63,7 @@ uint8_t hashdigest(Hash *hash, char *plaintext) {
   hash->finalize(value, sizeof(value));
 
 //  Console.print("Inside hashdigest(): ");
-//  for(int i; i<sizeof(value); i++) {
+//  for(i=0; i<sizeof(value); i++) {
 //    uint8_t letter[1];
 //    sprintf(letter,"%x",value[i]);  
 //    Console.print((char*)letter);
@@ -157,7 +157,7 @@ void loop() {
           sscanf(buf, "%s %s %s", &sender, &reqType, &nodeDigest);
 
           Console.print("Recieved hash: ");
-          for(int i; i<strlen((char*)nodeDigest); i++) {
+          for(i=0; i<strlen((char*)nodeDigest); i++) {
             uint8_t letter[1];
             sprintf(letter,"%x",nodeDigest[i]);  
             Console.print((char*)letter);

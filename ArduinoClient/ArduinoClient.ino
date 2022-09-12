@@ -17,6 +17,7 @@ SHA256 sha256;
 RH_RF95 rf95;
 float frequency = 915.0;
 bool authenticated = true;
+int i;
 
 char deviceID[10] = "NODE001";
 char devicePW[30] = "VerySecurePassword001";
@@ -37,7 +38,7 @@ char hashdigest(Hash *hash, char *plaintext) {
   hash->finalize(value, sizeof(value));
 
   Serial.print("Inside hashdigest(): ");
-  for(int i; i<sizeof(value); i++) {
+  for(i=0; i<sizeof(value); i++) {
     uint8_t letter[1];
     sprintf(letter,"%x",value[i]);  
     Serial.print((char*)letter);
@@ -119,7 +120,7 @@ bool chap() {
       }
 
 //      Serial.print("Challenge response: ");
-//      for(int i; i<sizeof(digest); i++) {
+//      for(i=0; i<sizeof(digest); i++) {
 //        uint8_t letter[1];
 //        sprintf(letter,"%x",digest[i]);  
 //        Serial.print((char*)letter);
