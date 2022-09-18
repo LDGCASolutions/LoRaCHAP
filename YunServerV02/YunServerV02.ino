@@ -19,58 +19,58 @@ int led = A2;
 float frequency = 915.0;
 int i;
 char deviceID[10] = "GATE001";
-//uint8_t nodeDigest[32];
 
 // The following device data shuould be retrieved from a DB
 
 char devices[10][10] = {"NODE001", "NODE002"};
 char passwords[10][30] = {"VerySecurePassword001", "PW2"};
-char challenges[10][30] = {"Chall001", "Chall002"};
+char challenges[10][10] = {};
 bool authenticated[10] = {};
 
-char devicePW[] = "VerySecurePassword001";
-
-char genChallenge() {
-  return "ThisIsARandomString";
-}
-
-bool authStat(char *deviceID) {
-  // Check the authentication status of the device
-  for (i=0; i<10; i++) {
-    if (strncmp(*devices[i], *deviceID, 10) == 0) {
-      if (authenticated[i]) {
-        return true;
-      }
-    }  
-  }
-  return false;
-}
-
-void authSet(char *sender, bool state) {
-  // Check the authentication status of the device
-  for (i=0; i<10; i++) {
-    if (strncmp(*devices[i], *sender, 10) == 0) {
-      authenticated[i] = state;
-    }  
+void genChallenge( char(&space)[10]) {
+  for(i=0; i<10; i++) {
+    int r = random(65,91); // ASCII Uppercase alphabet range
+    space[i] = r;
   }
 }
 
-uint8_t hashdigest(Hash *hash, char *plaintext) {  
+int getDeviceIndex(char *deviceID) {
+  for (i=0; i<10; i++) {
+    if (memcmp(deviceID, devices[i], strlen(deviceID)) == 0) {
+      return i;
+    }  
+  }
+  return -1;
+}
+
+void hashdigest(Hash *hash, char *plaintext, uint8_t (&digest) [32]) {
+  // ThisIsARandomStringVerySecurePassword001
+  // 997AD7A742BEAE99A2A67E0EF6835F49728CD2147F2688C7CB0AA7F639E28D7B
+  
   uint8_t value[32];
-
+  
   hash->reset();
   hash->update(plaintext, strlen(plaintext));
   hash->finalize(value, sizeof(value));
 
-//  Console.print("Inside hashdigest(): ");
-//  for(i=0; i<sizeof(value); i++) {
-//    uint8_t letter[1];
-//    sprintf(letter,"%x",value[i]);  
-//    Console.print((char*)letter);
+//  for(i=0; i<32; i++) {
+//    digest[i] = value[i];
 //  }
-//  Console.println();
 
-  return value;
+  memcpy(digest, value, 32);
+
+//  Console.print("Inside HashDigest: ");
+//  printHash(value);
+
+  return digest;
+}
+
+void printHash(uint8_t *value) {
+  for(i=0; i<32; i++) {
+    if (value[i] < 10) Console.print("0");  
+    Console.print(value[i], HEX);
+  }
+  Console.println();
 }
 
 void setup() 
@@ -104,7 +104,6 @@ void loop() {
   if (rf95.available()) {
     // Should be a message for us now   
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-    char challenge[30] = "ThisIsARandomString"; // <== NEED TO ASSIGN THIS FROM A FUNCTION
 
     if (rf95.waitAvailableTimeout(3000)) {
       if (rf95.recv(buf, sizeof(buf))) {
@@ -119,86 +118,90 @@ void loop() {
         
         sscanf(buf, "%s %s %s", &sender, &reqType, &content);
 
-        if (strcmp(reqType, "MESSAGE") == 0) {
-          // Check the authentication status of the device
-          if (authStat(sender)) {
-            // Device authenticated. Accept the message.
-            Console.print(sender);
-            Console.println(" is authenticated");
+        int deviceIndex = getDeviceIndex(sender);
 
-            // What happens next depends on what this device is
+        if (deviceIndex >= 0) {
+          if (strcmp(reqType, "MESSAGE") == 0) {
+            // Check the authentication status of the device
+            if (authenticated[deviceIndex]) {
+              // Device authenticated. Accept the message.
+              Console.print(sender);
+              Console.println(" is authenticated");
+  
+              // What happens next depends on what this device is
+              
+            } else {
+              Console.print(sender);
+              Console.println(" is NOT authenticated");
+              authenticated[deviceIndex] = false;
+    
+              sprintf(buf, "%s %s %s", deviceID, "CHAP_FAIL", sender);
+              rf95.send(buf, sizeof(buf));
+              rf95.waitPacketSent();
+              Console.println("CHAP reset request sent");
+            }
+          }
+  
+          if (strcmp(reqType, "CHAP_REQ") == 0) {
+            Console.print(content);
+            Console.println(" is trying to authenticate");
+                        
+            genChallenge(challenges[deviceIndex]);
             
-          } else {
-            Console.print(sender);
-            Console.println(" is NOT authenticated");
-            authSet(sender, false);
-  
-            sprintf(buf, "%s %s %s", deviceID, "CHAP_FAIL", sender);
+            Console.print("Challenge: ");
+            Console.println((char*)challenges[deviceIndex]);
+            
+            sprintf(buf, "%s %s %s", deviceID, "CHAP_CHAL", challenges[deviceIndex]);
             rf95.send(buf, sizeof(buf));
             rf95.waitPacketSent();
-            Console.println("CHAP reset request sent");
+            Console.println("Challenge sent");
           }
-        }
-
-        if (strcmp(reqType, "CHAP_REQ") == 0) {
-          Console.print(content);
-          Console.println(" is trying to authenticate");
-          sprintf(buf, "%s %s %s", deviceID, "CHAP_CHAL", challenge);
-          rf95.send(buf, sizeof(buf));
-          rf95.waitPacketSent();
-          Console.println("Challenge sent");
-        }
-
-        if (strcmp(reqType, "CHAP_RESP") == 0) {
-          Console.print("Challenge response recieved from ");
-          Console.println(sender);
   
-          uint8_t nodeDigest[32];
-          sscanf(buf, "%s %s %s", &sender, &reqType, &nodeDigest);
+          if (strcmp(reqType, "CHAP_RESP") == 0) {
+            Console.print("Challenge response recieved from ");
+            Console.println(sender);
+            Console.println((char*)challenges[deviceIndex]);
+            // Console.println((char*)passwords[deviceIndex]); // <=== Problem :-(
+            
 
-          Console.print("Recieved hash: ");
-          for(i=0; i<strlen((char*)nodeDigest); i++) {
-            uint8_t letter[1];
-            sprintf(letter,"%x",nodeDigest[i]);  
-            Console.print((char*)letter);
+            uint8_t nodeDigest[32];
+            memcpy(nodeDigest, &buf[18], 32*sizeof(*nodeDigest));
+  
+            Console.print("Recieved hash: ");
+            printHash(nodeDigest);
+
+//            uint8_t temp[40];
+//            sprintf(temp, "%s%s", challenges[deviceIndex], passwords[deviceIndex]);
+//            Console.println((char*)temp);
+    
+//            uint8_t digest[32];
+//            hashdigest(&sha256, temp, digest);
+    
+            // 997ad7a742beae99a2a67eef6835f49728cd2147f2688c7cbaa7f639e28d7b < Locally generated hash
+            // 997ad7a742beae99a2a67eef6835f49728cd2147f2688c7cb < Recieved hash
+            
+//            if (memcmp(digest, nodeDigest, 32) == 0) {
+//              Console.println("HASHES MATCH !!!");
+//              authenticated[deviceIndex] = true;
+//  
+////              sprintf(buf, "%s %s %s", deviceID, "CHAP_AUTH", sender);
+////              rf95.send(buf, sizeof(buf));
+////              rf95.waitPacketSent();
+////              Console.println("Notifing the node");
+//  
+//            } else {
+//              authenticated[deviceIndex] = false;
+//              Console.println("Authentication failed");
+//            }
           }
-          Console.println();
-
-          Console.print("Recieved hash string length: ");
-          Console.println(strlen((char*)nodeDigest));
-  
-          uint8_t temp1[50];
-          sprintf(temp1, "%s%s", challenge, devicePW);
-//          Console.println((char*)temp1);
-  
-          uint8_t digest[32];
-          sscanf(digest, "%s", hashdigest(&sha256, temp1));
-  
-          // 997ad7a742beae99a2a67eef6835f49728cd2147f2688c7cbaa7f639e28d7b < Locally generated hash
-          // 997ad7a742beae99a2a67eef6835f49728cd2147f2688c7cb < Recieved hash
-          
-          if (strncmp((char*)digest, (char*)nodeDigest, 16) == 0) {
-            Console.println("HASHES MATCH !!!");
-            authSet(sender, true);
-
-            sprintf(buf, "%s %s %s", deviceID, "CHAP_AUTH", sender);
-            rf95.send(buf, sizeof(buf));
-            rf95.waitPacketSent();
-            Console.println("Notifing the node");
-
-          } else {
-            authSet(sender, false);
-            Console.println("Authentication failed");
-          }
-          
+        } else {
+          Console.println("\tUNKNOWN DEVICE\n");
         }
-        
-      }
-      else {
-        Console.println("recv failed");
+      } else {
+        Console.println("Recv failed...");
       }
     } else {
-      Console.println("Listening...");
+      Console.println("Timeout...");
     }
   }
 }
