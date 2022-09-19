@@ -20,7 +20,7 @@ bool authenticated = true;
 int i;
 
 char deviceID[10] = "NODE001";
-char devicePW[30] = "VerySecurePassword002";
+char devicePW[10] = "PASS1234";
 
 void hashdigest(Hash *hash, char *plaintext, uint8_t (&digest) [32]) {
   // ThisIsARandomStringVerySecurePassword001
@@ -32,14 +32,10 @@ void hashdigest(Hash *hash, char *plaintext, uint8_t (&digest) [32]) {
   hash->update(plaintext, strlen(plaintext));
   hash->finalize(value, sizeof(value));
 
-  for(i=0; i<32; i++) {
-    digest[i] = value[i];
-  }
+  memcpy(digest, value, 32);
 
 //  Serial.print("Inside HashDigest: ");
 //  printHash(value);
-
-  return digest;
 }
 
 void printHash(uint8_t *value) {
@@ -109,13 +105,13 @@ bool chap() {
 
         if (rf95.waitAvailableTimeout(3000)) {
           if (rf95.recv(buf, sizeof(buf))) {
-//            sscanf(buf, "%s %s %s", &sender, &reqType, &content);
-//            Serial.print("\tSender  : ");
-//            Serial.println(sender);
-//            Serial.print("\tRequest : ");
-//            Serial.println(reqType);
-//            Serial.print("\tContent : ");
-//            Serial.println(content);
+            sscanf(buf, "%s %s %s", &sender, &reqType, &content);
+            Serial.print("\tSender  : ");
+            Serial.println(sender);
+            Serial.print("\tRequest : ");
+            Serial.println(reqType);
+            Serial.print("\tContent : ");
+            Serial.println(content);
             
             if ((strcmp(reqType, "CHAP_AUTH") == 0) && strncmp(deviceID, content, 10) == 0) {
               Serial.print(sender);
@@ -179,7 +175,7 @@ void loop() {
 
   Serial.println("Sending data to LoRa Server");
   // Send a message to LoRa Server
-  sprintf(buf, "%s %s %s", deviceID, "MESSAGE", "Heres some data :-P");
+  sprintf(buf, "%s %s %s", deviceID, "MESSAGE", "Some_data_:-D");
   rf95.send(buf, sizeof(buf));
   rf95.waitPacketSent();
 
