@@ -23,7 +23,7 @@ char deviceID[10] = "GATE001";
 // The following device data shuould be retrieved from a DB
 
 char devices[10][10] = {"NODE001", "NODE002"};
-char passwords[10][10] = {"PASS1234", "ASD12312"};
+char passwords[10][10] = {"NODE1PASS", "NODE2PASS"};
 char challenges[10][10] = {};
 bool authenticated[10] = {};
 

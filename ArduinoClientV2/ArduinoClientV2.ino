@@ -20,7 +20,7 @@ bool authenticated = true;
 int i;
 
 char deviceID[10] = "NODE001";
-char devicePW[10] = "PASS1234";
+char devicePW[10] = "NODE1PASS";
 
 void hashdigest(Hash *hash, char *plaintext, uint8_t (&digest) [32]) {
   // ThisIsARandomStringVerySecurePassword001
@@ -51,11 +51,8 @@ bool chap() {
   char sender[10];
   char reqType[10];
   char content[40];
-  
-  //  Device ID: NODE001
-  //  Device PW: VerySecurePassword001
 
-  Serial.println("=========================================================================");
+  Serial.println("==============================");
   Serial.println("Authenticating...");
   
   // Request to authenticate by sending the deviceID
@@ -70,63 +67,49 @@ bool chap() {
       Serial.println((char*)buf);
       
       sscanf(buf, "%s %s %s", &sender, &reqType, &content);
-      Serial.print("\tSender  : ");
-      Serial.println(sender);
-      Serial.print("\tRequest : ");
-      Serial.println(reqType);
-      Serial.print("\tContent : ");
-      Serial.println(content);
 
-      if (strcmp(reqType, "CHAP_CHAL") == 0) {
-        Serial.print(sender);
-        Serial.print(" sent a challenge: ");
-        Serial.println(content);
-
-        char tmp[40];
-        sprintf(tmp, "%s%s", content, devicePW);
-
-        Serial.print("Challenge response (Before hashing): ");
-        Serial.println((char*)tmp);
-
-        uint8_t digest[32];
-        hashdigest(&sha256, tmp, digest);
-
-        Serial.print("Outside HashDigest: ");
-        printHash(digest);
-
-        // ThisIsARandomStringVerySecurePassword001
-        // 997AD7A742BEAE99A2A67E0EF6835F49728CD2147F2688C7CB0AA7F639E28D7B <- Hopefully digest is this
-
-        sprintf(buf, "%s %s %s", deviceID, "CHAP_RESP", digest);
-        Serial.println("Sending challenge response");
-        
-        rf95.send(buf, sizeof(buf));
-        rf95.waitPacketSent(); 
-
-        if (rf95.waitAvailableTimeout(3000)) {
-          if (rf95.recv(buf, sizeof(buf))) {
-            sscanf(buf, "%s %s %s", &sender, &reqType, &content);
-            Serial.print("\tSender  : ");
-            Serial.println(sender);
-            Serial.print("\tRequest : ");
-            Serial.println(reqType);
-            Serial.print("\tContent : ");
-            Serial.println(content);
-            
-            if ((strcmp(reqType, "CHAP_AUTH") == 0) && strncmp(deviceID, content, 10) == 0) {
-              Serial.print(sender);
-              Serial.println(" says this node is authenticated! Lets Go!");
-              return true;  
+      if (strncmp(sender, "GATE", 4) == 0) { // Only a GATE can authenticate
+        if (strcmp(reqType, "CHAP_CHAL") == 0) {
+          char tmp[40];
+          sprintf(tmp, "%s%s", content, devicePW);
+  
+          uint8_t digest[32];
+          hashdigest(&sha256, tmp, digest);
+          Serial.print("CHAP_RESP : ");
+          printHash(digest);
+  
+          sprintf(buf, "%s %s %s", deviceID, "CHAP_RESP", digest);
+          
+          if (rf95.isChannelActive()) {
+            Serial.print("Channel busy.");
+            while (rf95.isChannelActive()) {
+              delay(random(10,100));   
+              Serial.print(".");
             }
           }
-        }         
-      } else {
-        Serial.println("ELSE");
-        Serial.println((char*)buf);
+          
+          rf95.send(buf, sizeof(buf));
+          rf95.waitPacketSent(); 
+  
+          if (rf95.waitAvailableTimeout(3000)) {
+            if (rf95.recv(buf, sizeof(buf))) {
+              sscanf(buf, "%s %s %s", &sender, &reqType, &content);
+              
+              if ((strcmp(reqType, "CHAP_AUTH") == 0) && strncmp(deviceID, content, 10) == 0) {
+                Serial.print(sender);
+                Serial.println(" says this node is authenticated! Lets Go!");
+                return true;  
+              }
+            }
+          }         
+        } else {
+          Serial.println("Not CHAP_CHAL");
+          Serial.println((char*)buf);
+        }  
       }
  
     } else {
-      Serial.println("Challenge recv failed");
+      Serial.println("Recv failed");
     }
   }
   else {
@@ -176,6 +159,13 @@ void loop() {
   Serial.println("Sending data to LoRa Server");
   // Send a message to LoRa Server
   sprintf(buf, "%s %s %s", deviceID, "MESSAGE", "Some_data_:-D");
+  if (rf95.isChannelActive()) {
+    Serial.print("Channel busy.");
+    while (rf95.isChannelActive()) {
+      delay(random(10,100));   
+      Serial.print(".");
+    }
+  }
   rf95.send(buf, sizeof(buf));
   rf95.waitPacketSent();
 
@@ -185,16 +175,15 @@ void loop() {
       Serial.println((char*)buf);
       
       sscanf(buf, "%s %s %s", &sender, &reqType, &content);
-      Serial.print("\tSender  : ");
-      Serial.println(sender);
-      Serial.print("\tRequest : ");
-      Serial.println(reqType);
-      Serial.print("\tContent : ");
-      Serial.println(content);
+
+      if (strcmp(reqType, "CHAP_REQ") == 0) {
+        // Another node is trying to authenticate. Give it some privacy
+        delay(20000);
+      }
   
       if ((strcmp(reqType, "CHAP_FAIL") == 0) && strncmp(deviceID, content, 10) == 0) {
         Serial.print(sender);
-        Serial.println(" says this node is not authenticated!");
+        Serial.println(" : CHAP_FAIL");
         authenticated = false;
       }
     }
