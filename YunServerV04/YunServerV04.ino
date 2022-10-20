@@ -1,71 +1,73 @@
 #define BAUDRATE 115200
 
-#include <SHA256.h>
 #include <Process.h>
 #include <Console.h>
 #include <SPI.h>
 #include <RH_RF95.h>
 RH_RF95 rf95;
 
-SHA256 sha256;
-
 int MESSAGELENGTH = 60; 
 // int MESSAGELENGTH = RH_RF95_MAX_MESSAGE_LEN // <-this must be too big as it breaks the code
 int led = A2;
 int i;
 char deviceID[10] = "GATE001";
+char* apiRoot = "https://lora-comm.herokuapp.com/api/";
+char* apiKey = "abcdefgHijkLMNOP"; 
 
-void apiCall(int mode, String parameters, char *result){
+void apiCall(int mode, char *parameters, char *result){
   Process p;
-  String apiUrl = "https://lora-comm.herokuapp.com/api/";
-  String apiKey = "abcdefgHijkLMNOP";
+  char *apiUrl;
+  apiUrl = (char*) malloc(sizeof(char)*200);
+  strcpy(apiUrl, apiRoot);
+  
   String response;
 
   if (mode == 1) {
     // Check if authenticate
-    apiUrl += "getAuthStatus.php";
+    strcat(apiUrl, "getAuthStatus.php");
   } else if (mode == 2) {
     // Generate new challenge
-    apiUrl += "getNewChallenge.php";
+    strcat(apiUrl, "getNewChallenge.php");
   } else if (mode == 3) {
     // Generate new challenge
-    apiUrl += "getChallenge.php";
+    strcat(apiUrl, "getChallenge.php");
   } else if (mode == 4) {
     // Authenticate a node that sent a CHAL_RESP
-    apiUrl += "authNode.php";
+    strcat(apiUrl, "authNode.php");
   }
 
-  apiUrl += "?apiKey=";
-  apiUrl += apiKey;
-  apiUrl += parameters;
+  strcat(apiUrl, "?apiKey=");
+  strcat(apiUrl, apiKey);
+  strcat(apiUrl, parameters);
+  
+  Console.print(" -- ");
+  Console.println(apiUrl);
 
   p.begin("curl");
   p.addParameter(apiUrl);
   p.run();
+  free(apiUrl);
 
-  while (p.available()>0) {
-    response += (char) p.read();
-  }
-  response += '\0'; 
-
-  Console.print("Resp (");
-  Console.print(response.length());
+  Console.print(" -- Resp (");
+  Console.print(p.available());
   Console.print(") : ");
-  Console.println(response);  
 
-  for(int i=0; i<response.length(); i++) {
-    result[i] = response[i];
+  for(i=0; i<15; i++) {
+    if (p.available()>0) result[i] = (char) p.read();
+    else break;
   }
-//  Console.flush();
+  result[i] = '\0';
+  Console.println(result);
 }
 
 bool authenticated(char* nodeID) {
-  String parameters = "&nodeID=" + (String)nodeID;
+  char *parameters;
+  parameters = (char*) malloc(25);
+  strcpy(parameters, "&nodeID=");
+  strcat(parameters, nodeID);
   char result[15];
   apiCall(1, parameters, result);
-  //Console.print("authenticated(): ");
-  //Console.println(result);
-  
+  free(parameters);
   if ((String)result == "1") {
     //Console.println("GOOD");
     return true;
@@ -75,37 +77,68 @@ bool authenticated(char* nodeID) {
   }
 }
 
-void getNewChallenge(char *nodeID) {
-  String parameters = "&nodeID=" + (String) nodeID;
-  char result[15]; 
-  apiCall(2, parameters, result);
+void getNewChallenge(char *nodeID, char *response) {
+  char *parameters;
+  parameters = (char*) malloc(25);
+  strcpy(parameters, "&nodeID=");
+  strcat(parameters, nodeID);
+  apiCall(2, parameters, response);
+  free(parameters);
 }
 
 void getChallenge(char* nodeID, char *response) {
-  String parameters = "&nodeID=" + (String) nodeID;
-  char result[15]; 
-  apiCall(3, parameters, result);
-  //Console.print("getChallenge(): ");
-  //Console.println(result);
-  for(int i=0; i<15; i++) {
-    response[i] = result[i];
-  }
+  char *parameters;
+  parameters = (char*) malloc(25);
+  strcpy(parameters, "&nodeID=");
+  strcat(parameters, nodeID);
+  apiCall(3, parameters, response);
+  free(parameters);
 }
 
-bool authenticate(char* nodeID, char* hash) {
-  String parameters = "&nodeID=" + (String) nodeID + "&resp=" + (String) hash;
-  String result;
-//  apiCall(4, parameters, result);
-  if (result == "1") return true;
-  else return false;
-}
-
-void printHash(uint8_t *value) {
+bool authenticate(char* nodeID, uint8_t* hash) {
+  Process p;
+  char result[15];
+  char *apiUrl;
+  apiUrl = (char*) malloc(sizeof(char)*200);
+  strcpy(apiUrl, apiRoot);
+  strcat(apiUrl, "authNode.php?apiKey=");
+  strcat(apiUrl, apiKey);
+  strcat(apiUrl, "&nodeID=");
+  strcat(apiUrl, nodeID);
+  strcat(apiUrl, "&resp=");
+    
   for(i=0; i<32; i++) {
-    if (value[i] < 16) Console.print("0");  
-    Console.print(value[i], HEX);
+    char tmp[3] = "";
+    sprintf(tmp, "%02X", hash[i]);
+    strcat(apiUrl, tmp);
   }
-  Console.println();
+
+  Console.print(" -- ");
+  Console.println(apiUrl);
+
+  p.begin("curl");
+  p.addParameter(apiUrl);
+  p.run();
+  free(apiUrl);
+
+  Console.print(" -- Resp (");
+  Console.print(p.available());
+  Console.print(") : ");
+
+  for(i=0; i<15; i++) {
+    if (p.available()>0) result[i] = (char) p.read();
+    else break;
+  }
+  result[i] = '\0';
+  Console.println(result);
+
+  if ((String)result == "1") {
+    //Console.println("GOOD");
+    return true;
+  } else {
+    //Console.println("bad");
+    return false;
+  }
 }
 
 void setup() {
@@ -121,7 +154,7 @@ void setup() {
   rf95.setFrequency(915.0);   
   rf95.setTxPower(13); 
   rf95.setSignalBandwidth(125000);
-  rf95.setSpreadingFactor(7);
+  rf95.setSpreadingFactor(8);
   rf95.setCodingRate4(5);
 }
 
@@ -131,11 +164,15 @@ void loop() {
   if (rf95.available()) {
     if (rf95.recv(buf, &len)) {
       digitalWrite(led, HIGH);
-      Console.println(".");
       char* sender = strtok(buf, " ");
       char* reqType = strtok(NULL, " ");
       char* content = strtok(NULL, " ");
 
+      Console.print(" - ");
+      Console.print(reqType);
+      Console.print(" from ");
+      Console.println(sender);
+      
       // Request type 1: MESSAGE
       //     Data from a node
       if (strcmp(reqType, "MESSAGE") == 0) {
@@ -156,8 +193,9 @@ void loop() {
       //     A node initiating CHAP. Respond with a challenge
       if (strcmp(reqType, "CHAP_REQ") == 0) {
         char challenge[15];
-        getChallenge(sender, challenge); //getNewChallenge(sender);
-        String message = (String)deviceID + " CHAP_CHAL " + (String)challenge; //"E81632AF5A";
+        //getChallenge(sender, challenge);
+        getNewChallenge(sender, challenge);
+        String message = (String)deviceID + " CHAP_CHAL " + (String)challenge;
         int messageLength = message.length();
         messageLength++;
         uint8_t reply[messageLength];
@@ -168,18 +206,20 @@ void loop() {
 
       // Request type 3: CHAP_RESP
       //     A node responding with the challenge responce
-      if (strcmp(reqType, "CHAP_RESP") == 0) {        
+      if (strcmp(reqType, "CHAP_RESP") == 0) {     
         uint8_t nodeDigest[32];
         memcpy(nodeDigest, &buf[18], 32*sizeof(*nodeDigest));
-
-        Console.print("CHAP_RESP : ");
-        for(i=0; i<32; i++) {
-          if (nodeDigest[i] < 16) Console.print("0");
-          Console.print(nodeDigest[i], HEX);
+        if (authenticate(sender, nodeDigest)) {
+          String message = (String)deviceID + " CHAP_AUTH " + (String)sender;
+          int messageLength = message.length();
+          messageLength++;
+          uint8_t reply[messageLength];
+          message.toCharArray(reply, messageLength);
+          rf95.send(reply, messageLength);
+          rf95.waitPacketSent();  
         }
-        Console.println();
-        
       }
+      
     }
   }
   digitalWrite(led, LOW);
