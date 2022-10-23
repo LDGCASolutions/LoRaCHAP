@@ -11,12 +11,21 @@
 #include <SPI.h>
 #include <RH_RF95.h>
 #include <SHA256.h>
+#include <CTR.h>
+#include <Crypto.h>
+#include <AES.h>
+#include "base64.hpp"
+
 SHA256 sha256;
+AES256 aes256; //AES in ECB mode
+
+BlockCipher *cipher = &aes256;
 
 // Singleton instance of the radio driver
 RH_RF95 rf95;
 float frequency = 915.0;
 bool authenticated = true;
+int messageIndex = 0;
 int i;
 
 char deviceID[10] = "NODE001";
@@ -148,8 +157,28 @@ void loop() {
   }
 
   Serial.println("Sending data to LoRa Server");
+  
+  // Key and initilization vector hard coded 
+  byte key[33] = "12345678123456781234567812345678";
+  messageIndex++;
+  char message[20];
+  sprintf(message, "some data %d", messageIndex);
+  Serial.println(message);
+  
+  byte ciphertext[16];
+  byte base64_text[20];
+
+  // Encrypt AES-256-ECB
+  crypto_feed_watchdog();
+  cipher->setKey(key, 32);
+  cipher->encryptBlock(ciphertext, message);
+
+  // Base64 encode
+  int base64_length = encode_base64(ciphertext,16,base64_text);
+  Serial.print("Base64 Text: ");Serial.println((char *) base64_text);
+  
   // Send a message to LoRa Server
-  sprintf(buf, "%s %s %s", deviceID, "MESSAGE", "Some_data_:-D");
+  sprintf(buf, "%s %s %s", deviceID, "MESSAGE", base64_text);
   if (rf95.isChannelActive()) {
     Serial.print("Channel busy.");
     while (rf95.isChannelActive()) {
@@ -160,7 +189,7 @@ void loop() {
   rf95.send(buf, sizeof(buf));
   rf95.waitPacketSent();
 
-  if (rf95.waitAvailableTimeout(10000)) { // Listen for 10 seconds
+  if (rf95.waitAvailableTimeout(20000)) { // Listen for 10 seconds
     if (rf95.recv(buf, sizeof(buf))) {
       Serial.print("Message: ");
       Serial.println((char*)buf);
@@ -180,5 +209,5 @@ void loop() {
     }
   }
   
-  delay(1000);
+  delay(30000);
 }
